@@ -9,7 +9,7 @@ pipeline {
     environment {
         AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-        AWS_DEFAULT_REGION    = 'ap-south-1'
+        AWS_DEFAULT_REGION    = 'us-east-1'
     }
 
     stages {
@@ -18,36 +18,45 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/ehabelguindy/terraform-jenkins-pipeline.git'
             }
         }
-        stage('Terraform init') {
+
+        stage('Terraform Init') {
             steps {
                 sh 'terraform init'
             }
         }
-        stage('Plan') {
+
+        stage('Terraform Plan') {
             steps {
-                sh 'terraform plan -out tfplan'
+                sh 'terraform plan -out=tfplan'
                 sh 'terraform show -no-color tfplan > tfplan.txt'
             }
         }
-        stage('Apply / Destroy') {
+
+        stage('Apply or Destroy') {
             steps {
                 script {
                     if (params.action == 'apply') {
                         if (!params.autoApprove) {
                             def plan = readFile 'tfplan.txt'
                             input message: "Do you want to apply the plan?",
-                            parameters: [text(name: 'Plan', description: 'Please review the plan', defaultValue: plan)]
+                                parameters: [text(name: 'Plan', description: 'Please review the plan', defaultValue: plan)]
                         }
-
-                        sh 'terraform ${action} -input=false tfplan'
+                        echo "Applying Terraform plan..."
+                        sh "terraform apply -input=false tfplan"
                     } else if (params.action == 'destroy') {
-                        sh 'terraform ${action} --auto-approve'
+                        echo "Destroying infrastructure..."
+                        sh "terraform destroy --auto-approve"
                     } else {
-                        error "Invalid action selected. Please choose either 'apply' or 'destroy'."
+                        error "Invalid action selected: ${params.action}"
                     }
                 }
             }
         }
+    }
 
+    post {
+        failure {
+            echo 'Terraform operation failed. Check permissions or syntax.'
+        }
     }
 }
